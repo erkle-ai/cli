@@ -1,6 +1,6 @@
 {
   "name": "@erkle/cli",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Connect Claude Code, Cursor and Codex to Erkle: shared, reviewed team memory for AI coding agents over MCP. One command: npx @erkle/cli init",
   "license": "MIT",
   "author": {

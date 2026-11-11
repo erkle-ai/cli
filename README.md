@@ -118,11 +118,22 @@ scoped by team, project and repo, permissioned, and reviewed. `init` keeps a
 short block in your instruction files that points agents at Erkle; see
 [Erkle vs. AGENTS.md](https://erkle.ai/compare/agents-md).
 
-**What does it cost?** Free for teams of up to 3, then $5 per active member
-per month. See [pricing](https://erkle.ai/pricing).
+**What does it cost?** $5 per user per month, or $50 per user per year, after
+a 7-day trial with no card needed. See [pricing](https://erkle.ai/pricing).
+
+## Who maintains this
+
+Erkle is built and operated by
+[Justin Albrecht](https://www.linkedin.com/in/justin-albrecht-19a021bb/).
+Development happens in a private repository. This public repository is the
+release mirror: each release lands here as one commit made by the release
+automation, which is why commits show `github-actions[bot]`, and its tag is
+what gets published to npm. How Erkle itself handles your data is on the
+[security page](https://erkle.ai/security).
 
 ## Bugs
 
 Open an issue at [github.com/erkle-ai/cli](https://github.com/erkle-ai/cli/issues).
 This repository receives one commit per release and doesn't take pull requests;
-see [CONTRIBUTING](.github/CONTRIBUTING.md).
+see [CONTRIBUTING](.github/CONTRIBUTING.md). Report vulnerabilities privately,
+as described in [SECURITY](SECURITY.md).
