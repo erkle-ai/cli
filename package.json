@@ -1,8 +1,13 @@
 {
   "name": "@erkle/cli",
-  "version": "0.1.0",
-  "description": "Connect your coding agents (Claude Code, Cursor, Codex) to Erkle, your team's shared memory.",
+  "version": "0.1.1",
+  "description": "Connect Claude Code, Cursor and Codex to Erkle: shared, reviewed team memory for AI coding agents over MCP. One command: npx @erkle/cli init",
   "license": "MIT",
+  "author": {
+    "name": "Erkle",
+    "email": "hello@erkle.ai",
+    "url": "https://erkle.ai"
+  },
   "type": "module",
   "bin": {
     "erkle": "dist/cli.js"
@@ -21,12 +26,33 @@
     "url": "git+https://github.com/erkle-ai/cli.git"
   },
   "homepage": "https://erkle.ai",
+  "bugs": {
+    "url": "https://github.com/erkle-ai/cli/issues"
+  },
   "keywords": [
     "erkle",
     "mcp",
+    "mcp-server",
+    "model-context-protocol",
+    "ai-agents",
+    "coding-agents",
+    "ai-coding",
+    "agent-memory",
+    "team-memory",
+    "shared-memory",
+    "knowledge-base",
+    "context-engineering",
     "claude-code",
+    "claude",
+    "anthropic",
     "cursor",
-    "codex"
+    "codex",
+    "openai-codex",
+    "agents-md",
+    "claude-md",
+    "llm",
+    "cli",
+    "developer-tools"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",

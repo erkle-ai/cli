@@ -1,11 +1,35 @@
-# @erkle/cli
+<p align="center">
+  <a href="https://erkle.ai"><img src="assets/logo.svg" width="96" height="96" alt="Erkle logo"></a>
+</p>
 
-Connect your coding agents to [Erkle](https://erkle.ai), your team's shared
-memory, in one command.
+<h1 align="center">@erkle/cli</h1>
+
+<p align="center">
+  Connect Claude Code, Cursor and Codex to <a href="https://erkle.ai">Erkle</a>, shared team memory for AI coding agents, in one command.
+</p>
+
+<p align="center">
+  <a href="https://www.npmjs.com/package/@erkle/cli"><img src="https://img.shields.io/npm/v/@erkle/cli?color=86d39a&labelColor=0e1014" alt="npm version"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/npm/l/@erkle/cli?color=86d39a&labelColor=0e1014" alt="MIT license"></a>
+  <img src="https://img.shields.io/node/v/@erkle/cli?color=86d39a&labelColor=0e1014" alt="Node version">
+</p>
 
 ```sh
 npx @erkle/cli init
 ```
+
+## What is Erkle?
+
+[Erkle](https://erkle.ai) is shared, reviewed team memory for AI coding
+agents. It's a hosted MCP server (`https://erkle.ai/mcp`) where your team's
+decisions, conventions, constraints and lessons live, scoped to the team, a
+project, or a repository. Agents search it before a task and propose what
+they learned after; maintainers review proposals before they go live. One
+memory works across Claude Code, Cursor, Codex and claude.ai, so every
+teammate's agent knows what the team knows.
+
+`@erkle/cli` is the setup step: `erkle init` wires your agents to that server
+and tells them how to use it.
 
 Run it in a git repository (installed globally, the command is `erkle init`).
 It:
@@ -77,6 +101,25 @@ For local development against a dev server:
 ```sh
 ERKLE_URL=http://localhost:8080/mcp npx @erkle/cli init
 ```
+
+## FAQ
+
+**Does `init` need an Erkle account or API key?** No. It only writes config
+files. Each agent opens a browser OAuth sign-in the first time it connects.
+There are no API keys.
+
+**Which agents are supported?** Claude Code, Cursor and Codex. claude.ai
+connects to the same server as a custom connector; see
+[erkle.ai](https://erkle.ai).
+
+**How is this different from `CLAUDE.md` or `AGENTS.md`?** Instruction files
+live in one repo and change by commit. Erkle is shared across repos and tools,
+scoped by team, project and repo, permissioned, and reviewed. `init` keeps a
+short block in your instruction files that points agents at Erkle; see
+[Erkle vs. AGENTS.md](https://erkle.ai/compare/agents-md).
+
+**What does it cost?** Free for teams of up to 3, then $5 per active member
+per month. See [pricing](https://erkle.ai/pricing).
 
 ## Bugs
 
