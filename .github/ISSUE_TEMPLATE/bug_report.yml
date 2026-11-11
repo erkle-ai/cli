@@ -1,0 +1,39 @@
+name: Bug report
+description: Something in `npx @erkle/cli init` didn't work as expected.
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you ran, what you expected, and what you got instead.
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: Output
+      description: The command and its output, pasted verbatim. Redact private URLs and paths.
+      render: text
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: '@erkle/cli version'
+      description: Output of `npx @erkle/cli --version`.
+    validations:
+      required: true
+  - type: input
+    id: env
+    attributes:
+      label: Node version and OS
+      placeholder: Node 22.12, macOS 15
+    validations:
+      required: true
+  - type: dropdown
+    id: agents
+    attributes:
+      label: Agents selected
+      multiple: true
+      options: [Claude Code, Cursor, Codex]
