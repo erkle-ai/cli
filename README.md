@@ -18,6 +18,33 @@
 npx @erkle/cli init
 ```
 
+Your agents forget what your team decided. One teammate's Claude Code learns
+that the billing service must never retry a charge; tomorrow another
+teammate's Cursor retries it. `CLAUDE.md` helps inside one repo, but it doesn't
+travel across repos, tools, or people, and nobody reviews what goes in it.
+Erkle gives every agent on the team the same reviewed memory.
+
+## What it looks like
+
+After `init`, a session goes like this (illustrative):
+
+```text
+You:    Add retries to the charge endpoint.
+
+Agent:  [memory_search "charge endpoint retries" repo=acme/billing]
+        Found 1 constraint (team scope, approved by Dana):
+        "Never retry POST /charges. Stripe idempotency keys expire after 24h,
+         and a retry after that double-charges. Retry only the webhook."
+        I'll add retries to the webhook handler instead and leave /charges alone.
+
+        ...
+
+Agent:  I learned the webhook handler must be idempotent on event.id.
+        Propose it as a convention for acme/billing? [y/n]
+You:    y
+Agent:  [memory_create] Proposed. A maintainer reviews it before it goes live.
+```
+
 ## What is Erkle?
 
 [Erkle](https://erkle.ai) is shared, reviewed team memory for AI coding
