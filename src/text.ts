@@ -2,6 +2,28 @@ export const DEFAULT_URL = 'https://erkle.ai/mcp';
 
 export const SERVER_NAME = 'erkle';
 
+/** How an agent signs in to the server: its own browser sign-in, or an API key from the environment. */
+export const AUTH_MODES = ['oauth', 'key'] as const;
+export type AuthMode = (typeof AUTH_MODES)[number];
+
+/**
+ * What an existing entry uses. `custom` is an Authorization header (or Codex
+ * token variable) the user set themselves, which init never changes without --force.
+ */
+export type EntryAuth = AuthMode | 'custom';
+
+/** An agent's erkle entry as found on disk. */
+export interface AgentEntry {
+  url: string | null;
+  auth: EntryAuth;
+}
+
+export const API_KEY_ENV = 'ERKLE_API_KEY';
+// Each agent expands environment variables in its own syntax, so the key
+// itself is never written to a config file.
+export const CLAUDE_KEY_HEADER = `Bearer \${${API_KEY_ENV}}`;
+export const CURSOR_KEY_HEADER = `Bearer \${env:${API_KEY_ENV}}`;
+
 export const BLOCK_START = '<!-- erkle:start -->';
 export const BLOCK_END = '<!-- erkle:end -->';
 
@@ -41,3 +63,17 @@ export const IMPORT_PROMPT = `Connect to Erkle and import what this repository a
 5. Then call memory_import with scope "repo", \`repo\` set to the remote, and at
    most 100 entries per call. Report which entries were approved, proposed, or
    failed.`;
+
+/**
+ * How to point each agent at a key in ERKLE_API_KEY, printed after `keys
+ * create`. The Claude Code header is single-quoted so the shell leaves
+ * `${ERKLE_API_KEY}` for Claude Code to expand.
+ */
+export function keySnippets(url: string): string {
+  return `Connect an agent with it (each reads the key from ${API_KEY_ENV}):
+  Claude Code: claude mcp add --transport http --scope user ${SERVER_NAME} ${url} --header 'Authorization: ${CLAUDE_KEY_HEADER}'
+  Cursor (~/.cursor/mcp.json): "headers": { "Authorization": "${CURSOR_KEY_HEADER}" }
+  Codex (~/.codex/config.toml): bearer_token_env_var = "${API_KEY_ENV}"
+Or run \`erkle init --auth key\` to write these for you.
+`;
+}

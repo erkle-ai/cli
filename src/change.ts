@@ -1,5 +1,6 @@
 import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import { basename, dirname, isAbsolute, join, relative } from 'node:path';
+import { CliError, type ErrorCode } from './output.js';
 
 export type Action = 'create' | 'update' | 'unchanged' | 'conflict';
 
@@ -27,7 +28,15 @@ export interface CommandChange {
 
 export type Change = FileChange | CommandChange;
 
-export class InitError extends Error {}
+/**
+ * Init can't go ahead. Most often a config file is in a state init won't
+ * overwrite, hence the default code; unsafe or failed writes say so.
+ */
+export class InitError extends CliError {
+  constructor(message: string, code: ErrorCode = 'conflict') {
+    super(code, message);
+  }
+}
 
 export function readIfExists(path: string): string | null {
   try {

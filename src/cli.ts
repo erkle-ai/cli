@@ -1,8 +1,9 @@
 #!/usr/bin/env node
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
-import { homedir } from 'node:os';
+import { homedir, hostname } from 'node:os';
 import * as clack from '@clack/prompts';
+import { REQUEST_TIMEOUT_MS } from './http.js';
 import { type Machine } from './probe.js';
 import { run } from './run.js';
 
@@ -24,7 +25,38 @@ const machine: Machine = {
     const r = spawnSync(cmd, args, { cwd, encoding: 'utf8', shell: false });
     return { ok: r.status === 0, stdout: r.stdout ?? '', stderr: r.stderr || r.error?.message || '' };
   },
+  fetch(url, init, timeoutMs = REQUEST_TIMEOUT_MS) {
+    const timeout = AbortSignal.timeout(timeoutMs);
+    return fetch(url, { ...init, signal: init?.signal ? AbortSignal.any([init.signal, timeout]) : timeout });
+  },
+  sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+  now: () => Date.now(),
+  hostname: () => hostname(),
+  openBrowser,
 };
+
+/** Hand an http(s) URL to the platform's opener, with no shell in between. */
+function openBrowser(url: string): Promise<boolean> {
+  if (!/^https?:\/\//i.test(url)) return Promise.resolve(false);
+  const [cmd, args] =
+    process.platform === 'darwin'
+      ? ['open', [url]]
+      : process.platform === 'win32'
+        ? ['rundll32', ['url.dll,FileProtocolHandler', url]]
+        : ['xdg-open', [url]];
+  return new Promise((resolve) => {
+    try {
+      const child = spawn(cmd, args, { stdio: 'ignore', detached: true, shell: false });
+      child.once('error', () => resolve(false));
+      child.once('spawn', () => {
+        child.unref();
+        resolve(true);
+      });
+    } catch {
+      resolve(false);
+    }
+  });
+}
 
 const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as { version: string };
 

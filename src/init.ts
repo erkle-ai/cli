@@ -4,14 +4,16 @@ import { basename, dirname, join, relative, sep } from 'node:path';
 import { type Change, type CommandChange, InitError, isInside, readIfExists, resolveTarget } from './change.js';
 import { planCodex } from './codex.js';
 import { planInstructions } from './instructions.js';
-import { isObj, planJsonServer } from './json-config.js';
+import { authMatches, headerAuth, headersFor, isObj, planJsonServer } from './json-config.js';
 import { AGENT_LABELS, type AgentId, type Machine } from './probe.js';
-import { SERVER_NAME } from './text.js';
+import { type AgentEntry, API_KEY_ENV, type AuthMode, CLAUDE_KEY_HEADER, CURSOR_KEY_HEADER, SERVER_NAME } from './text.js';
 
 export interface PlanOptions {
   agents: AgentId[];
   global: boolean;
   url: string;
+  /** Key mode is user scope only; the caller sets `global` for it. */
+  auth: AuthMode;
   force: boolean;
   instructions: boolean;
   repoRoot: string | null;
@@ -34,17 +36,18 @@ export function planChanges(m: Machine, o: PlanOptions): Change[] {
     if (agent === 'claude') {
       if (project) {
         const p = join(base, '.mcp.json');
-        changes.push(planJsonServer(p, readIfExists(p), { type: 'http', url: o.url }, o.force, show(p)));
+        const entry = { type: 'http', url: o.url };
+        changes.push(planJsonServer(p, readIfExists(p), { entry, auth: o.auth, keyHeader: CLAUDE_KEY_HEADER, force: o.force, display: show(p) }));
       } else {
-        changes.push(planClaudeUser(m, o.url, o.force));
+        changes.push(planClaudeUser(m, o.url, o.auth, o.force));
       }
     } else if (agent === 'cursor') {
-      const p = join(base, '.cursor', 'mcp.json');
-      changes.push(planJsonServer(p, readIfExists(p), { url: o.url }, o.force, show(p)));
+      const p = project ? join(base, '.cursor', 'mcp.json') : userConfigPath(m, 'cursor');
+      const entry = { url: o.url };
+      changes.push(planJsonServer(p, readIfExists(p), { entry, auth: o.auth, keyHeader: CURSOR_KEY_HEADER, force: o.force, display: show(p) }));
     } else {
-      const codexDir = project ? join(base, '.codex') : (m.env.CODEX_HOME ?? join(m.home, '.codex'));
-      const p = join(codexDir, 'config.toml');
-      changes.push(planCodex(p, readIfExists(p), o.url, o.force, show(p)));
+      const p = project ? join(base, '.codex', 'config.toml') : userConfigPath(m, 'codex');
+      changes.push(planCodex(p, readIfExists(p), { url: o.url, auth: o.auth, force: o.force, display: show(p) }));
     }
   }
 
@@ -62,7 +65,7 @@ export function planChanges(m: Machine, o: PlanOptions): Change[] {
     if (c.kind !== 'file' || !isPending(c)) continue;
     const target = resolveTarget(c.path);
     if (root && o.repoRoot && isInside(o.repoRoot, c.path) && !isInside(root, target)) {
-      throw new InitError(`${show(c.path)} resolves to ${target}, outside the repository. Refusing to write there.`);
+      throw new InitError(`${show(c.path)} resolves to ${target}, outside the repository. Refusing to write there.`, 'file_unsafe');
     }
     // Two configs linked to one file would each be planned from the same old
     // bytes, and the second write would silently undo the first.
@@ -75,28 +78,53 @@ export function planChanges(m: Machine, o: PlanOptions): Change[] {
   return changes;
 }
 
+/** Where each agent keeps its user-level MCP config. Claude Code's is edited only through its own CLI. */
+export function userConfigPath(m: Machine, agent: AgentId): string {
+  if (agent === 'claude') return join(m.env.CLAUDE_CONFIG_DIR ?? m.home, '.claude.json');
+  if (agent === 'cursor') return join(m.home, '.cursor', 'mcp.json');
+  return join(m.env.CODEX_HOME ?? join(m.home, '.codex'), 'config.toml');
+}
+
+function claudeUserEntry(m: Machine): Record<string, unknown> | undefined {
+  try {
+    const root: unknown = JSON.parse(readIfExists(userConfigPath(m, 'claude')) ?? '{}');
+    const entry = isObj(root) && isObj(root.mcpServers) ? root.mcpServers[SERVER_NAME] : undefined;
+    return isObj(entry) ? entry : undefined;
+  } catch {
+    // Unreadable or not JSON: `claude mcp add` will report on its own file.
+    return undefined;
+  }
+}
+
+/** The user-scope Claude Code erkle entry, or null when there is none. */
+export function readClaudeUser(m: Machine): AgentEntry | null {
+  const entry = claudeUserEntry(m);
+  if (!entry) return null;
+  return { url: typeof entry.url === 'string' ? entry.url : null, auth: headerAuth(entry.headers, CLAUDE_KEY_HEADER) };
+}
+
+/** `claude mcp add --header` arguments for each header, in order. */
+function headerArgs(headers: unknown): string[] {
+  return isObj(headers) ? Object.entries(headers).flatMap(([k, v]) => ['--header', `${k}: ${String(v)}`]) : [];
+}
+
 /**
  * Claude Code keeps user-scope servers in ~/.claude.json, a large file it
  * rewrites constantly, so go through its own CLI instead of editing it.
+ * Commands run as argv arrays with no shell, so `${ERKLE_API_KEY}` reaches
+ * Claude Code literally and it expands the variable itself.
  */
-function planClaudeUser(m: Machine, url: string, force: boolean): CommandChange {
-  const path = join(m.env.CLAUDE_CONFIG_DIR ?? m.home, '.claude.json');
-  const add = ['claude', 'mcp', 'add', '--transport', 'http', '--scope', 'user', SERVER_NAME, url];
+function planClaudeUser(m: Machine, url: string, auth: AuthMode, force: boolean): CommandChange {
+  const path = userConfigPath(m, 'claude');
+  const addFor = (u: string) => ['claude', 'mcp', 'add', '--transport', 'http', '--scope', 'user', SERVER_NAME, u];
   const base = { kind: 'command' as const, path, rollback: [] as string[][] };
-  let current: Record<string, unknown> | undefined;
-  try {
-    const root: unknown = JSON.parse(readIfExists(path) ?? '{}');
-    const entry = isObj(root) && isObj(root.mcpServers) ? root.mcpServers[SERVER_NAME] : undefined;
-    current = isObj(entry) ? entry : undefined;
-  } catch {
-    // Unreadable or not JSON: `claude mcp add` will report on its own file.
-    current = undefined;
-  }
+  const current = claudeUserEntry(m);
   const currentUrl = current?.url;
-  if (currentUrl === url) {
+  const currentAuth = headerAuth(current?.headers, CLAUDE_KEY_HEADER);
+  if (current !== undefined && currentUrl === url && authMatches(currentAuth, auth)) {
     return { ...base, action: 'unchanged', summary: `${SERVER_NAME} already set (user scope)`, commands: [] };
   }
-  if (current !== undefined && !force) {
+  if (current !== undefined && currentUrl !== url && !force) {
     return {
       ...base,
       action: 'conflict',
@@ -104,9 +132,20 @@ function planClaudeUser(m: Machine, url: string, force: boolean): CommandChange 
       commands: [],
     };
   }
-  if (!m.which('claude')) {
-    throw new InitError('Claude Code with --global needs the `claude` CLI on PATH.');
+  // Only key mode replaces a user's own header; OAuth mode carries it over.
+  if (auth === 'key' && currentAuth === 'custom' && !force) {
+    return {
+      ...base,
+      action: 'conflict',
+      summary: `${SERVER_NAME} has its own Authorization header; pass --force to replace`,
+      commands: [],
+    };
   }
+  if (!m.which('claude')) {
+    throw new InitError('Claude Code at user scope (--global or --auth key) needs the `claude` CLI on PATH.');
+  }
+  // `claude mcp add` replaces the whole entry, so carry the user's other headers over.
+  const add = [...addFor(url), ...headerArgs(headersFor(current?.headers, auth, CLAUDE_KEY_HEADER))];
   return current === undefined
     ? { ...base, action: 'create', summary: `claude mcp add ${SERVER_NAME} (user scope)`, commands: [add] }
     : {
@@ -114,8 +153,8 @@ function planClaudeUser(m: Machine, url: string, force: boolean): CommandChange 
         action: 'update',
         summary: `replace ${SERVER_NAME} (user scope)`,
         commands: [['claude', 'mcp', 'remove', '--scope', 'user', SERVER_NAME], add],
-        // If the add fails after the remove, put the old entry back.
-        rollback: typeof currentUrl === 'string' ? [[...add.slice(0, -1), currentUrl]] : [],
+        // If the add fails after the remove, put the old entry back, headers too.
+        rollback: typeof currentUrl === 'string' ? [[...addFor(currentUrl), ...headerArgs(current.headers)]] : [],
       };
 }
 
@@ -144,7 +183,7 @@ export function apply(m: Machine, changes: Change[], show: (path: string) => str
     }
   } catch (err) {
     for (const s of staged) rmSync(s.tmp, { force: true });
-    throw new InitError(`Couldn't write ${show(failedPath(err, changes))}: ${(err as Error).message}. Nothing was changed.`);
+    throw new InitError(`Couldn't write ${show(failedPath(err, changes))}: ${(err as Error).message}. Nothing was changed.`, 'file_unsafe');
   }
 
   const done: string[] = [];
@@ -154,7 +193,7 @@ export function apply(m: Machine, changes: Change[], show: (path: string) => str
       done.push(show(s.path));
     } catch (err) {
       for (const rest of staged) rmSync(rest.tmp, { force: true });
-      throw new InitError(`Couldn't write ${show(s.path)}: ${(err as Error).message}.${changedSoFar(done)}`);
+      throw new InitError(`Couldn't write ${show(s.path)}: ${(err as Error).message}.${changedSoFar(done)}`, 'file_unsafe');
     }
   }
 
@@ -210,9 +249,21 @@ function changedSoFar(done: string[]): string {
   return done.length ? ` Already written: ${done.join(', ')}. Re-running init is safe.` : ' Nothing was changed.';
 }
 
-export function nextSteps(agents: AgentId[], global: boolean): string[] {
+/** "a", "a and b", "a, b and c". */
+export function listJoin(items: string[]): string {
+  return items.length < 2 ? items.join('') : `${items.slice(0, -1).join(', ')} and ${items.at(-1)}`;
+}
+
+export function nextSteps(agents: AgentId[], global: boolean, auth: AuthMode = 'oauth'): string[] {
   const lines: string[] = [];
   const pad = (s: string) => s.padEnd(12);
+  if (auth === 'key') {
+    if (agents.length === 0) return lines;
+    lines.push(`Set ${API_KEY_ENV} to an Erkle API key, or run \`erkle keys create --env-file ~/.erkle.env\` and source that file.`);
+    const names = agents.map((a) => AGENT_LABELS[a]);
+    lines.push(`Then restart ${listJoin(names)} so ${names.length > 1 ? 'they read' : 'it reads'} the key.`);
+    return lines;
+  }
   for (const a of agents) {
     const label = pad(AGENT_LABELS[a]);
     if (a === 'claude') {

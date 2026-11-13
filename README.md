@@ -56,7 +56,10 @@ memory works across Claude Code, Cursor, Codex and claude.ai, so every
 teammate's agent knows what the team knows.
 
 `@erkle/cli` is the setup step: `erkle init` wires your agents to that server
-and tells them how to use it.
+and tells them how to use it. On a machine where an agent can't open a
+browser, the CLI can also sign you in from the terminal and make an API key
+for the agents to use instead (see
+[Remote and headless machines](#remote-and-headless-machines)).
 
 Run it in a git repository (installed globally, the command is `erkle init`).
 It:
@@ -108,12 +111,15 @@ Running `init` again when everything is set up changes nothing.
 
 ```text
 --agents <list>     claude,cursor,codex (default: ask, or the detected ones)
+--auth <mode>       oauth (default) or key; key writes user-level config only
 --global            write user-level config instead of the repo's
 --url <url>         MCP server URL (default https://erkle.ai/mcp, or $ERKLE_URL)
 -y, --yes           apply without asking
 --dry-run           print the plan and write nothing
---force             replace an existing erkle entry that has a different URL
+--force             replace an existing erkle entry with a different URL or,
+                    with --auth key, its own Authorization header
 --no-instructions   don't touch AGENTS.md / CLAUDE.md
+--json              print one JSON document on stdout
 -h, --help          show help
 -v, --version       show the version
 ```
@@ -129,11 +135,118 @@ For local development against a dev server:
 ERKLE_URL=http://localhost:8080/mcp npx @erkle/cli init
 ```
 
+## Remote and headless machines
+
+An agent's own sign-in opens a browser on the machine it runs on. On a
+server, over SSH, or in a container there is no browser to open, so give the
+agents an API key instead. These commands need an Erkle server that supports
+CLI sign-in.
+
+Sign in once. `erkle login` prints a link and a code; open the link on any
+device (your laptop, your phone), enter the code, and pick the team to start
+on:
+
+```sh
+npx @erkle/cli login
+```
+
+Make a key and write it to a private env file instead of the screen:
+
+```sh
+erkle keys create --env-file ~/.erkle.env
+```
+
+Keys are read-only by default. `--write` lets agents write memories,
+`--projects a,b` limits the key to those projects (`erkle projects` lists
+them), and `--expires <days>` sets its life (30 days by default, at most
+365). If your team requires browser approval for keys made from the CLI,
+`keys create` prints a link to approve first.
+
+Load the file in your shell profile (`~/.zshrc`, `~/.bashrc`) so every agent
+you start has the key:
+
+```sh
+set -a; . ~/.erkle.env; set +a
+```
+
+Point the agents at it. `--auth key` writes user-level config that reads the
+key from `ERKLE_API_KEY`; the key itself is never written to a config file:
+
+```sh
+erkle init --auth key
+```
+
+Then check what the agents will reach:
+
+```sh
+erkle status
+```
+
+`status` shows how each agent connects, checks your sign-in, and, when
+`ERKLE_API_KEY` is set, which team and projects the key reaches and whether
+it can write.
+
+The other commands: `erkle whoami` shows the account, teams, and session;
+`erkle team list` and `erkle team use <team>` pick the team keys are made
+in; `erkle keys list` and `erkle keys revoke <id>` manage keys. Run
+`erkle <command> --help` for each command's options.
+
+## For agents
+
+Every command is safe to run from an agent.
+
+- `--json` prints exactly one JSON document on stdout, and progress text
+  goes to stderr. A success is `{"ok": true, "schemaVersion": 1, "command":
+  "keys create", ...}`; a failure is `{"ok": false, "schemaVersion": 1,
+  "error": {"code", "message", "hint"}}`, where the hint names the next
+  command to run. Each command's `--help` lists its fields.
+- Error codes: `usage`, `not_signed_in`, `session_expired`,
+  `session_revoked`, `no_team`, `forbidden`, `not_found`,
+  `approval_required`, `denied`, `expired`, `key_rejected`, `rate_limited`,
+  `network`, `server`, `conflict`, `file_unsafe`.
+- Exit codes: `0` success, including a pending approval; `1` error; `2` bad
+  usage.
+- Without a terminal, nothing prompts. Commands that would ask first
+  (`init`, `keys revoke`) or print a secret (`token`) need `--yes` instead.
+- `login`, and `keys create` when the team requires approval, wait for a
+  person to approve in a browser. Without a terminal they wait at most 90
+  seconds (`--timeout <s>` changes that; `--no-wait` returns at once), then
+  return `"status": "pending"` with the link, the code, and a `resume`
+  command such as `erkle login --resume`. Show the person the link and code,
+  then run the `resume` command once they have approved.
+
+## Credentials
+
+The CLI keeps its sign-ins in `credentials.json` in its config directory,
+the first of `$ERKLE_CONFIG_DIR`, `$XDG_CONFIG_HOME/erkle`, `%APPDATA%\erkle`
+on Windows, and `~/.config/erkle`. The file is mode 0600 and holds one
+session per server, and the CLI only sends the session for the server it is
+talking to. It refuses a config directory inside a git repository. Pending
+approvals live next to it under `pending/` until they are collected.
+
+A session lasts 30 days and can only manage keys: it can't read or write
+memories. `login` never prints it.
+
+`ERKLE_TOKEN` takes the place of the stored session, for CI. It is only sent
+to `https://erkle.ai` and to the one server named in `ERKLE_TOKEN_ORIGIN`, so a
+repo's `.env` that sets `ERKLE_URL` can't send your token somewhere else.
+`ERKLE_API_KEY` follows the same rule in `status`.
+
+`erkle token` creates a separate session for a CI secret and prints its
+token; it is the only command that prints one. Signing in or out on your
+machine doesn't affect it.
+
+`erkle logout` ends the session on the server and removes it from this
+machine. `erkle logout --revoke-keys` also revokes every key that session
+created. Resetting your Erkle password ends all of your CLI sessions, and
+the keys they created stop working.
+
 ## FAQ
 
 **Does `init` need an Erkle account or API key?** No. It only writes config
 files. Each agent opens a browser OAuth sign-in the first time it connects.
-There are no API keys.
+Where that can't work, use an API key instead; see
+[Remote and headless machines](#remote-and-headless-machines).
 
 **Which agents are supported?** Claude Code, Cursor and Codex. claude.ai
 connects to the same server as a custom connector; see

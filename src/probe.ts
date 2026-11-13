@@ -24,6 +24,18 @@ export interface Machine {
   env: Record<string, string | undefined>;
   which(cmd: string): boolean;
   exec(cmd: string, args: string[], cwd: string): ExecResult;
+  /**
+   * `fetch`, aborted after `timeoutMs` (default 30 seconds) so a server that
+   * accepts the connection and stalls cannot hang the command. An abort
+   * rejects with a `TimeoutError`.
+   */
+  fetch(url: string, init?: RequestInit, timeoutMs?: number): Promise<Response>;
+  sleep(ms: number): Promise<void>;
+  /** Milliseconds since the epoch. */
+  now(): number;
+  hostname(): string;
+  /** Open an http(s) URL in the default browser. Resolves false if that failed; never throws. */
+  openBrowser(url: string): Promise<boolean>;
 }
 
 export interface Probe {
